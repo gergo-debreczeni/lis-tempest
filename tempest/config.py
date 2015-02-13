@@ -284,6 +284,9 @@ LisGroup = [
                     "This is a required option"),
     cfg.StrOpt('phys_private_2',
                help='Mapping between physnet and hyper-v second private vSwitch'
+                    "This is a required option"),
+    cfg.StrOpt('phys_internal',
+               help='Mapping between physnet and hyper-v internal vSwitch'
                     "This is a required option")
 ]
 

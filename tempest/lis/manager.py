@@ -2593,7 +2593,8 @@ class LisBase(ScenarioTest):
 
         if tenant_id is None:
             tenant_id = self.tenant_id
-        network = self._create_network(tenant_id=tenant_id, phys_net_type=phys_net_type)
+        network = self._create_network(
+            tenant_id=tenant_id, phys_net_type=phys_net_type)
         router = self._get_router(tenant_id)
         subnet = self._create_subnet(network, existing_cidr)
         subnet.add_to_router(router.id)
@@ -2659,3 +2660,11 @@ class LisBase(ScenarioTest):
         full_script_path = my_path + script_path
         linux_client.execute_script(
             script_name, args, full_script_path, destination)
+
+    def get_ip_via_netadapter(self, instance_name, host_name):
+        s_out = self.host_client.get_powershell_cmd_attribute(
+            'Get-VMNetworkAdapter', 'IPAddresses',
+            ComputerName=host_name,
+            VMName=instance_name,
+        )
+        return s_out

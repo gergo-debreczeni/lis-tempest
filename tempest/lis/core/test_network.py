@@ -138,6 +138,8 @@ class Network(manager.LisBase):
         floating_ip = self.nova_floating_ip_create()
         self.nova_floating_ip_add(floating_ip, instance)
         instance['floating_ip'] = floating_ip['ip']
+        netw = instance['addresses'][fixed_network_name][0]
+        instance['private_ip'] = netw['addr']
         return instance
 
     def spawn_vm_basic(self, mac=False):
@@ -183,8 +185,7 @@ class Network(manager.LisBase):
             self.instances.append(instance)
 
     def spawn_vm_internal(self):
-        #internal = CONF.lis_specific.phys_private_1
-        internal = 'physnet_internal_2'
+        internal = CONF.lis_specific.phys_internal
         self.add_keypair()
         self.security_group = self._create_security_group()
         name = data_utils.rand_name(internal)
@@ -311,6 +312,13 @@ class Network(manager.LisBase):
         netmask = snet['cidr'].split('/')[1]
         linux_client.set_legacy_adapter(ip, netmask, gateway)
 
+    def get_gateway(self):
+        net = self.get_default_network()
+        netw = self._list_networks(id=net['id'])
+        subnet = self._list_subnets(id=netw[0]['subnets'][0])
+        subnet_gateway = subnet[0]['gateway_ip']
+        return subnet_gateway
+
     def _init_client(self, server_or_ip, username, private_key):
         try:
             return self.get_remote_client(
@@ -322,14 +330,7 @@ class Network(manager.LisBase):
             self._log_console_output()
             raise exc
 
-    def get_gateway(self):
-        net = self.get_default_network()
-        netw = self._list_networks(id=net['id'])
-        subnet = self._list_subnets(id=netw[0]['subnets'][0])
-        subnet_gateway = subnet[0]['gateway_ip']
-        return subnet_gateway
-
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['smoke', 'core_network'])
     @test.services('compute', 'network')
     def test_copy_large_file(self):
         user_datas = ('big_file', 'ssh')
@@ -343,7 +344,7 @@ class Network(manager.LisBase):
         self.wait_big_disk(vm1_client)
         self.copy_large_file(vm1_client, key_name, user, vm2['floating_ip'])
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['core_network'])
     @test.services('compute', 'network')
     def test_bridge_network(self):
         self.spawn_vm_bridge()
@@ -378,7 +379,7 @@ class Network(manager.LisBase):
         self.verify_ping(vm3['private_ip'], vm1_eth1, vm1_client)
         self.verify_ping(vm1['private_ip'], vm3_eth1, vm3_client)
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['smoke', 'core_network'])
     @test.services('compute', 'network')
     def test_external_network(self):
         vm = self.spawn_vm_basic()
@@ -388,7 +389,7 @@ class Network(manager.LisBase):
         gateway_ip = self.get_gateway()
         self.verify_ping(gateway_ip)
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['smoke', 'core_network'])
     @test.services('compute', 'network')
     def test_private_network(self):
         self.spawn_vm_private()
@@ -406,7 +407,7 @@ class Network(manager.LisBase):
 
         self.verify_ping(vm1['private_ip'], vm1_eth1, vm2_client)
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['smoke', 'core_network'])
     @test.services('compute', 'network')
     def test_internal_network(self):
         vm = self.spawn_vm_internal()
@@ -422,7 +423,7 @@ class Network(manager.LisBase):
             vm['gateway'], mac, vm['instance_name'], vm['host_name'])
         self.verify_ping(vm['gateway'], vm_eth1, linux_client)
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['smoke', 'core_network'])
     @test.services('compute', 'network')
     def test_multiple_networks(self):
         vm = self.spawn_vm_multi_nic()
@@ -435,7 +436,7 @@ class Network(manager.LisBase):
         linux_client.refresh_iface(vm_eth1)
         self.verify_ping(vm['gateway_2'], vm_eth1, linux_client)
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['smoke', 'core_network'])
     @test.services('compute', 'network')
     def test_network_legacy(self):
         vm = self.spawn_vm_basic()
@@ -448,7 +449,7 @@ class Network(manager.LisBase):
         linux_client.validate_authentication()
         self.set_legacy(linux_client)
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['smoke', 'core_network'])
     @test.services('compute', 'network')
     def test_static_mac(self):
         vm = self.spawn_vm_basic(mac=True)
@@ -456,7 +457,7 @@ class Network(manager.LisBase):
         linux_client = self._init_client(vm['floating_ip'], self.ssh_user, key)
         self.check_mac(linux_client, vm['static_mac'])
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['core_network'])
     @test.services('compute', 'network')
     def test_network_mode(self):
         vm = self.spawn_vm_basic(mac=True)
@@ -464,7 +465,19 @@ class Network(manager.LisBase):
         linux_client = self._init_client(vm['floating_ip'], self.ssh_user, key)
         self.check_network_mode(linux_client)
 
-    @test.attr(type=['smoke', 'core'])
+    @test.attr(type=['core_network'])
+    @test.services('compute', 'network')
+    def test_retrieve_ip_via_netadapter(self):
+        vm = self.spawn_vm_basic(mac=True)
+        key = self.keypair['private_key']
+        linux_client = self._init_client(vm['floating_ip'], self.ssh_user, key)
+        self._initiate_host_client(vm['host_name'])
+        ip_from_net_adapter = self.get_ip_via_netadapter(
+            vm['instance_name'], vm['host_name'])
+        msg = 'Ip assigned to VM was not found via network manager'
+        self.assertTrue(vm['private_ip'] in ip_from_net_adapter, msg)
+
+    @test.attr(type=['core_network'])
     @test.services('compute', 'network')
     def test_operstate(self):
         vm = self.spawn_vm_basic(mac=True)
